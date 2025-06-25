@@ -1,0 +1,28 @@
+{
+  "error_id": "ERR_20250625_152213_0000",
+  "timestamp": "2025-06-25T15:22:13.699866",
+  "error_type": "ConversionError",
+  "message": "Failed to generate Python scripts: name 'datetime' is not defined",
+  "severity": "high",
+  "category": "conversion",
+  "context": {
+    "file_path": null,
+    "line_number": null,
+    "function_name": null,
+    "component": "PythonGenerator",
+    "operation": "generate_scripts",
+    "user_input": null,
+    "system_info": {}
+  },
+  "stack_trace": "Traceback (most recent call last):\n  File \"/Users/johnroberts/Projects/Untitled/ssis-parser/src/ssis_migrator/generators/python_generator.py\", line 245, in generate_scripts\n    main_script = self._generate_main_script(package)\n  File \"/Users/johnroberts/Projects/Untitled/ssis-parser/src/ssis_migrator/generators/python_generator.py\", line 310, in _generate_main_script\n    generation_date=datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\"),\nNameError: name 'datetime' is not defined\n",
+  "suggestions": [],
+  "recovery_action": null,
+  "metadata": {
+    "platform": "macOS-12.7.6-x86_64-i386-64bit",
+    "python_version": "3.10.18 (main, Jun 24 2025, 21:53:25) [Clang 14.0.0 (clang-1400.0.29.202)]",
+    "memory_usage": 82.6,
+    "cpu_usage": 39.5,
+    "working_directory": "/Users/johnroberts/Projects/Untitled/ssis-parser",
+    "command_line": "test_python_generator.py"
+  }
+}
