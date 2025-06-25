@@ -11,6 +11,8 @@ from ..core.logger import LoggerMixin
 from .component_parser import ComponentParser
 from .connection_parser import ConnectionParser
 from .variable_parser import VariableParser
+from .config_parser import ConfigParser, ConfigFile
+import os
 
 
 @dataclass
@@ -27,6 +29,8 @@ class SSISPackage:
     data_flow_components: List[Dict[str, Any]] = field(default_factory=list)
     control_flow_tasks: List[Dict[str, Any]] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    configuration_files: List[ConfigFile] = field(default_factory=list)
+    environment_variables: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -46,6 +50,7 @@ class DTSXParser(LoggerMixin):
         self.component_parser = ComponentParser()
         self.connection_parser = ConnectionParser()
         self.variable_parser = VariableParser()
+        self.config_parser = ConfigParser()
         
         # SSIS XML namespaces
         self.namespaces = {
@@ -90,6 +95,12 @@ class DTSXParser(LoggerMixin):
             
             # Parse executables (tasks and data flows)
             self._parse_executables(root, package)
+            
+            # Parse configuration files
+            package.configuration_files = self._parse_configuration_files(file_path)
+            
+            # Extract environment variables from all sources
+            package.environment_variables = self._extract_all_environment_variables(package)
             
             self.logger.info(f"Successfully parsed package: {package.name}")
             return ParsingResult(True, package=package)
@@ -306,4 +317,73 @@ class DTSXParser(LoggerMixin):
             return False
             
         except Exception:
-            return False 
+            return False
+    
+    def _parse_configuration_files(self, dtsx_file_path: Path) -> List[ConfigFile]:
+        """Parse associated configuration files"""
+        config_files = []
+        found_paths = set()
+        
+        # Look for .dtsConfig files in the same directory
+        config_dir = dtsx_file_path.parent
+        package_name = dtsx_file_path.stem
+        
+        # Common configuration file patterns
+        config_patterns = [
+            f"{package_name}.dtsConfig",
+            f"{package_name}.dtsconfig",
+            "package.dtsConfig",
+            "package.dtsconfig"
+        ]
+        
+        for pattern in config_patterns:
+            config_file_path = config_dir / pattern
+            if config_file_path.exists() and str(config_file_path.absolute()) not in found_paths:
+                self.logger.info(f"Found configuration file: {config_file_path}")
+                config_file = self.config_parser.parse_config_file(str(config_file_path))
+                if config_file:
+                    config_files.append(config_file)
+                    found_paths.add(str(config_file_path.absolute()))
+        
+        # Also look for any .dtsConfig files in the directory
+        for config_file_path in config_dir.glob("*.dtsConfig"):
+            if str(config_file_path.absolute()) not in found_paths:
+                self.logger.info(f"Found additional configuration file: {config_file_path}")
+                config_file = self.config_parser.parse_config_file(str(config_file_path))
+                if config_file:
+                    config_files.append(config_file)
+                    found_paths.add(str(config_file_path.absolute()))
+        
+        self.logger.info(f"Found {len(config_files)} configuration files")
+        return config_files
+    
+    def _extract_all_environment_variables(self, package: SSISPackage) -> Dict[str, str]:
+        """Extract environment variables from all sources"""
+        env_vars = {}
+        
+        # Extract from configuration files
+        for config_file in package.configuration_files:
+            env_vars.update(config_file.environment_variables)
+        
+        # Extract from connection strings
+        for conn in package.connection_managers:
+            conn_string = conn.get('connection_string', '')
+            env_vars_in_conn = self.config_parser._find_environment_variables(conn_string)
+            for env_var in env_vars_in_conn:
+                env_vars[env_var] = os.environ.get(env_var, '')
+        
+        # Extract from variables
+        for var in package.variables:
+            var_value = var.get('value', '')
+            env_vars_in_var = self.config_parser._find_environment_variables(var_value)
+            for env_var in env_vars_in_var:
+                env_vars[env_var] = os.environ.get(env_var, '')
+        
+        # Extract from control flow tasks
+        for task in package.control_flow_tasks:
+            task_props = task.get('properties', {})
+            for prop_value in task_props.values():
+                if isinstance(prop_value, str):
+                    env_vars_in_prop = self.config_parser._find_environment_variables(prop_value)
+                    for env_var in env_vars_in_prop:
+                        env_vars[env_var] = os.environ.get(env_var, '') 

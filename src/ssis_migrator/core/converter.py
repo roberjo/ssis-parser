@@ -183,6 +183,18 @@ class SSISConverter(LoggerMixin):
                 }
                 for task in package.control_flow_tasks
             ],
+            'configuration_files': [
+                {
+                    'file_path': config.file_path,
+                    'entries_count': len(config.entries),
+                    'environment_variables': list(config.environment_variables.keys()),
+                    'encrypted_entries': [
+                        entry.path for entry in config.entries if entry.is_encrypted
+                    ]
+                }
+                for config in package.configuration_files
+            ],
+            'environment_variables': package.environment_variables,
             'metadata': package.metadata
         }
         
