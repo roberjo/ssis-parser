@@ -257,10 +257,20 @@ class DTSXParser(LoggerMixin):
             if task_info['creation_name'] == 'Microsoft.ExecuteSQLTask':
                 sql_task_data = object_data.find('SQLTask:SqlTaskData', self.namespaces)
                 if sql_task_data is not None:
+                    # Get SQL task properties with proper namespace handling
+                    def get_sql_attr(element, attr_name):
+                        # Try with namespace first
+                        ns_attr = f'{{{self.namespaces["SQLTask"]}}}{attr_name}'
+                        value = element.get(ns_attr)
+                        if value is not None:
+                            return value
+                        # Try without namespace
+                        return element.get(attr_name, '')
+                    
                     task_info['properties'] = {
-                        'connection': self._get_attr(sql_task_data, 'Connection'),
-                        'sql_statement': self._get_attr(sql_task_data, 'SqlStatementSource'),
-                        'result_type': self._get_attr(sql_task_data, 'ResultType')
+                        'connection': get_sql_attr(sql_task_data, 'Connection'),
+                        'sql_statement': get_sql_attr(sql_task_data, 'SqlStatementSource'),
+                        'result_type': get_sql_attr(sql_task_data, 'ResultType')
                     }
         
         return task_info

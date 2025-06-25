@@ -23,9 +23,9 @@ class ComponentParser(LoggerMixin):
             '{C8C8C883-0E37-4C98-A094-E4B6BB9E42B5}': 'XML Source',
             
             # Destinations
-            '{E9216C7C-4A8A-4F77-8948-60C5D8C75F70}': 'OLE DB Destination',
-            '{A560E93D-4177-4C8B-9F5F-96F8FD959C4B}': 'Flat File Destination',
-            '{C27664E8-786E-4EB0-9A94-D2CCF1AFE4EE}': 'Excel Destination',
+            '{E9216C7C-4A8A-4F77-8948-60C5D8C75F71}': 'OLE DB Destination',
+            '{A560E93D-4177-4C8B-9F5F-96F8FD959C4C}': 'Flat File Destination',
+            '{C27664E8-786E-4EB0-9A94-D2CCF1AFE4EF}': 'Excel Destination',
             
             # Transformations
             '{C9C7375C-8340-4F56-A550-919B1E4F4C66}': 'Derived Column',
@@ -52,12 +52,62 @@ class ComponentParser(LoggerMixin):
             Dictionary with component information
         """
         try:
-            component_id = comp_elem.get('pipeline:componentClassID', '')
-            component_name = comp_elem.get('pipeline:name', 'Unknown')
-            component_desc = comp_elem.get('pipeline:description', '')
+            # Get component attributes with proper namespace handling
+            def get_attr(element, attr_name):
+                # Try with namespace first
+                ns_attr = f'{{{namespaces["pipeline"]}}}{attr_name}'
+                value = element.get(ns_attr)
+                if value is not None:
+                    return value
+                # Try without namespace
+                return element.get(attr_name, '')
+            
+            component_id = get_attr(comp_elem, 'componentClassID')
+            component_name = get_attr(comp_elem, 'name')
+            component_desc = get_attr(comp_elem, 'description')
             
             # Determine component type
             component_type = self.component_types.get(component_id, 'Unknown')
+            
+            # If component type is still Unknown or if we have a description that might be more specific,
+            # try to determine from description
+            if component_desc:
+                if 'Source' in component_desc:
+                    if 'OLE DB' in component_desc:
+                        component_type = 'OLE DB Source'
+                    elif 'Flat File' in component_desc:
+                        component_type = 'Flat File Source'
+                    elif 'Excel' in component_desc:
+                        component_type = 'Excel Source'
+                    elif 'XML' in component_desc:
+                        component_type = 'XML Source'
+                elif 'Destination' in component_desc:
+                    if 'OLE DB' in component_desc:
+                        component_type = 'OLE DB Destination'
+                    elif 'Flat File' in component_desc:
+                        component_type = 'Flat File Destination'
+                    elif 'Excel' in component_desc:
+                        component_type = 'Excel Destination'
+                elif 'Derived Column' in component_desc:
+                    component_type = 'Derived Column'
+                elif 'Data Conversion' in component_desc:
+                    component_type = 'Data Conversion'
+                elif 'Lookup' in component_desc:
+                    component_type = 'Lookup'
+                elif 'Merge Join' in component_desc:
+                    component_type = 'Merge Join'
+                elif 'Union All' in component_desc:
+                    component_type = 'Union All'
+                elif 'Sort' in component_desc:
+                    component_type = 'Sort'
+                elif 'Aggregate' in component_desc:
+                    component_type = 'Aggregate'
+                elif 'Conditional Split' in component_desc:
+                    component_type = 'Conditional Split'
+                elif 'Multicast' in component_desc:
+                    component_type = 'Multicast'
+                elif 'Script Component' in component_desc:
+                    component_type = 'Script Component'
             
             # Parse properties
             properties = self._parse_component_properties(comp_elem, namespaces)
@@ -75,15 +125,15 @@ class ComponentParser(LoggerMixin):
                 'inputs': inputs,
                 'outputs': outputs,
                 'metadata': {
-                    'version': comp_elem.get('pipeline:version', ''),
-                    'creation_name': comp_elem.get('pipeline:creationName', '')
+                    'version': get_attr(comp_elem, 'version'),
+                    'creation_name': get_attr(comp_elem, 'creationName')
                 }
             }
             
             return component_info
             
         except Exception as e:
-            self.logger.error(f"Error parsing component {comp_elem.get('pipeline:name', 'Unknown')}: {str(e)}")
+            self.logger.error(f"Error parsing component {comp_elem.get('name', 'Unknown')}: {str(e)}")
             return None
     
     def _parse_component_properties(self, comp_elem: ET.Element, namespaces: Dict[str, str]) -> Dict[str, Any]:
