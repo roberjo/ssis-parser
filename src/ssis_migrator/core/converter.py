@@ -4,6 +4,7 @@ SSIS Package Converter - Core conversion logic
 """
 
 import logging
+import json
 from pathlib import Path
 from typing import Dict, Any, Optional
 from .config import Config
@@ -13,6 +14,8 @@ from .error_handler import (
     ErrorSeverity, ErrorCategory
 )
 from ..parsers.dtsx_parser import DTSXParser, ParsingResult
+from ..generators.python_generator import PythonScriptGenerator, GenerationResult
+from datetime import datetime
 
 
 class ConversionResult:
@@ -33,6 +36,7 @@ class SSISConverter(LoggerMixin):
         self.config = config
         self.error_handler = error_handler or ErrorHandler()
         self.dtsx_parser = DTSXParser(error_handler=self.error_handler)
+        self.python_generator = PythonScriptGenerator(error_handler=self.error_handler)
         self.logger.info("SSIS Converter initialized")
     
     def convert_package(
@@ -48,6 +52,42 @@ class SSISConverter(LoggerMixin):
         self.logger.info(f"Converting package: {package_path}")
         
         try:
+            file_path = Path(package_path)
+            
+            # Validate file existence
+            if not file_path.exists():
+                error = FileSystemError(
+                    f"File does not exist: {file_path}",
+                    severity=ErrorSeverity.HIGH,
+                    file_path=str(file_path)
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(file_path),
+                        component="SSISConverter",
+                        operation="convert_package"
+                    )
+                )
+                return ConversionResult(False, output_path, [str(error)])
+            
+            # Validate file extension
+            if not file_path.suffix.lower() == '.dtsx':
+                error = ConversionError(
+                    f"File is not a .dtsx file: {file_path}",
+                    severity=ErrorSeverity.MEDIUM,
+                    file_path=str(file_path)
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(file_path),
+                        component="SSISConverter",
+                        operation="convert_package"
+                    )
+                )
+                return ConversionResult(False, output_path, [str(error)])
+            
             # Create output directory
             output_dir = Path(output_path)
             try:
@@ -97,13 +137,35 @@ class SSISConverter(LoggerMixin):
             self.logger.info(f"Found {len(package.data_flow_components)} data flow components")
             self.logger.info(f"Found {len(package.control_flow_tasks)} control flow tasks")
             
-            # TODO: Generate Python code based on parsed components
-            # TODO: Write output files
+            # Generate Python scripts
+            generation_result = self.python_generator.generate_scripts(package, str(output_dir))
             
-            # For now, just create a summary file
+            if not generation_result.success:
+                return ConversionResult(False, output_path, generation_result.errors)
+            
+            # Write generated scripts to files
+            try:
+                self._write_generated_scripts(generation_result.scripts, output_dir)
+            except Exception as e:
+                error = ConversionError(
+                    f"Failed to write generated scripts: {str(e)}",
+                    severity=ErrorSeverity.MEDIUM,
+                    source_component="script_writer"
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(output_dir),
+                        component="SSISConverter",
+                        operation="write_scripts"
+                    )
+                )
+                return ConversionResult(False, output_path, [str(error)])
+            
+            # Create package summary
             summary_file = output_dir / f"{package.name}_summary.json"
             try:
-                self._write_package_summary(package, summary_file)
+                self._write_package_summary(package, summary_file, generation_result)
             except Exception as e:
                 error = ConversionError(
                     f"Failed to write package summary: {str(e)}",
@@ -121,7 +183,18 @@ class SSISConverter(LoggerMixin):
                 return ConversionResult(False, output_path, [str(error)])
             
             self.logger.info(f"Package converted successfully to: {output_path}")
-            return ConversionResult(True, output_path)
+            self.logger.info(f"Generated {len(generation_result.scripts)} Python scripts")
+            
+            return ConversionResult(
+                success=True, 
+                output_path=output_path,
+                warnings=generation_result.warnings,
+                metadata={
+                    "scripts_generated": len(generation_result.scripts),
+                    "package_name": package.name,
+                    "components_processed": len(package.data_flow_components) + len(package.control_flow_tasks)
+                }
+            )
             
         except Exception as e:
             error = ConversionError(
@@ -185,6 +258,8 @@ class SSISConverter(LoggerMixin):
             successful_conversions = 0
             failed_conversions = 0
             all_errors = []
+            all_warnings = []
+            total_scripts = 0
             
             for dtsx_file in dtsx_files:
                 self.logger.info(f"Converting package: {dtsx_file.name}")
@@ -203,16 +278,28 @@ class SSISConverter(LoggerMixin):
                 
                 if result.success:
                     successful_conversions += 1
+                    all_warnings.extend(result.warnings)
+                    if result.metadata:
+                        total_scripts += result.metadata.get("scripts_generated", 0)
                 else:
                     failed_conversions += 1
                     all_errors.extend(result.errors)
             
             self.logger.info(f"Directory conversion completed: {successful_conversions} successful, {failed_conversions} failed")
+            self.logger.info(f"Total scripts generated: {total_scripts}")
             
             if failed_conversions > 0:
-                return ConversionResult(False, output_path, all_errors)
+                return ConversionResult(False, output_path, all_errors, all_warnings)
             else:
-                return ConversionResult(True, output_path)
+                return ConversionResult(
+                    True, 
+                    output_path, 
+                    warnings=all_warnings,
+                    metadata={
+                        "packages_converted": successful_conversions,
+                        "total_scripts": total_scripts
+                    }
+                )
             
         except Exception as e:
             error = ConversionError(
@@ -230,69 +317,62 @@ class SSISConverter(LoggerMixin):
             )
             return ConversionResult(False, output_path, [str(error)])
     
-    def _write_package_summary(self, package, summary_file: Path) -> None:
+    def _write_generated_scripts(self, scripts: list, output_dir: Path) -> None:
+        """Write generated scripts to files"""
+        for script in scripts:
+            script_path = output_dir / script.name
+            try:
+                with open(script_path, 'w', encoding='utf-8') as f:
+                    f.write(script.content)
+                self.logger.info(f"Written script: {script_path}")
+            except Exception as e:
+                raise ConversionError(
+                    f"Failed to write script {script.name}: {str(e)}",
+                    severity=ErrorSeverity.MEDIUM,
+                    source_component="file_writer"
+                )
+    
+    def _write_package_summary(self, package, summary_file: Path, generation_result: GenerationResult) -> None:
         """Write package summary to JSON file"""
-        import json
-        
         summary = {
-            'package_name': package.name,
-            'version': package.version,
-            'description': package.description,
-            'creation_date': package.creation_date,
-            'creator': package.creator,
-            'package_id': package.package_id,
-            'connection_managers': [
-                {
-                    'name': conn['name'],
-                    'type': conn['type'],
-                    'connection_string': conn['connection_string']
-                }
-                for conn in package.connection_managers
-            ],
-            'variables': [
-                {
-                    'name': var['name'],
-                    'data_type': var['data_type_name'],
-                    'value': var['value'],
-                    'namespace': var['metadata']['namespace']
-                }
-                for var in package.variables
-            ],
-            'data_flow_components': [
-                {
-                    'name': comp['name'],
-                    'type': comp['type'],
-                    'description': comp['description']
-                }
-                for comp in package.data_flow_components
-            ],
-            'control_flow_tasks': [
-                {
-                    'name': task['name'],
-                    'type': task['type'],
-                    'description': task['description']
-                }
-                for task in package.control_flow_tasks
-            ],
-            'configuration_files': [
-                {
-                    'file_path': config.file_path,
-                    'entries_count': len(config.entries),
-                    'environment_variables': list(config.environment_variables.keys()),
-                    'encrypted_entries': [
-                        entry.path for entry in config.entries if entry.is_encrypted
-                    ]
-                }
-                for config in package.configuration_files
-            ],
-            'environment_variables': package.environment_variables,
-            'metadata': package.metadata
+            "package_info": {
+                "name": package.name,
+                "version": package.version,
+                "description": package.description,
+                "creation_date": package.creation_date,
+                "creator": package.creator,
+                "package_id": package.package_id
+            },
+            "components": {
+                "connection_managers": len(package.connection_managers),
+                "variables": len(package.variables),
+                "data_flow_components": len(package.data_flow_components),
+                "control_flow_tasks": len(package.control_flow_tasks),
+                "configuration_files": len(package.configuration_files),
+                "environment_variables": len(package.environment_variables)
+            },
+            "generated_scripts": {
+                "total_count": len(generation_result.scripts),
+                "scripts": [
+                    {
+                        "name": script.name,
+                        "dependencies": script.dependencies,
+                        "metadata": script.metadata
+                    }
+                    for script in generation_result.scripts
+                ]
+            },
+            "conversion_info": {
+                "conversion_date": str(datetime.now()),
+                "tool_version": "1.0.0",
+                "warnings": generation_result.warnings
+            }
         }
         
-        with open(summary_file, 'w') as f:
-            json.dump(summary, f, indent=2)
+        with open(summary_file, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False)
         
-        self.logger.info(f"Package summary written to: {summary_file}")
+        self.logger.info(f"Written package summary: {summary_file}")
     
     def validate_package_structure(self, package_path: str) -> bool:
         """Validate that a file has the basic structure of a DTSX file"""
