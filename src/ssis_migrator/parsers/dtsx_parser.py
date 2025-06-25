@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from ..core.logger import LoggerMixin
+from ..core.error_handler import (
+    ErrorHandler, ParsingError, FileSystemError, create_error_context,
+    ErrorSeverity, ErrorCategory
+)
 from .component_parser import ComponentParser
 from .connection_parser import ConnectionParser
 from .variable_parser import VariableParser
@@ -45,12 +49,13 @@ class ParsingResult:
 class DTSXParser(LoggerMixin):
     """Main parser for SSIS .dtsx files"""
     
-    def __init__(self):
+    def __init__(self, error_handler: Optional[ErrorHandler] = None):
         self.logger.info("DTSX Parser initialized")
         self.component_parser = ComponentParser()
         self.connection_parser = ConnectionParser()
         self.variable_parser = VariableParser()
         self.config_parser = ConfigParser()
+        self.error_handler = error_handler or ErrorHandler()
         
         # SSIS XML namespaces
         self.namespaces = {
@@ -74,15 +79,59 @@ class DTSXParser(LoggerMixin):
         try:
             file_path = Path(file_path)
             
+            # Validate file existence
             if not file_path.exists():
-                return ParsingResult(False, errors=[f"File does not exist: {file_path}"])
+                error = FileSystemError(
+                    f"File does not exist: {file_path}",
+                    severity=ErrorSeverity.HIGH,
+                    file_path=str(file_path)
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(file_path),
+                        component="DTSXParser",
+                        operation="parse_file"
+                    )
+                )
+                return ParsingResult(False, errors=[str(error)])
             
+            # Validate file extension
             if not file_path.suffix.lower() == '.dtsx':
-                return ParsingResult(False, errors=[f"File is not a .dtsx file: {file_path}"])
+                error = ParsingError(
+                    f"File is not a .dtsx file: {file_path}",
+                    severity=ErrorSeverity.MEDIUM,
+                    file_path=str(file_path)
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(file_path),
+                        component="DTSXParser",
+                        operation="parse_file"
+                    )
+                )
+                return ParsingResult(False, errors=[str(error)])
             
             # Parse XML
-            tree = ET.parse(file_path)
-            root = tree.getroot()
+            try:
+                tree = ET.parse(file_path)
+                root = tree.getroot()
+            except ET.ParseError as e:
+                error = ParsingError(
+                    f"XML parsing error: {str(e)}",
+                    severity=ErrorSeverity.HIGH,
+                    file_path=str(file_path)
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(file_path),
+                        component="DTSXParser",
+                        operation="parse_xml"
+                    )
+                )
+                return ParsingResult(False, errors=[str(error)])
             
             # Extract package metadata
             package = self._extract_package_metadata(root)
@@ -105,14 +154,21 @@ class DTSXParser(LoggerMixin):
             self.logger.info(f"Successfully parsed package: {package.name}")
             return ParsingResult(True, package=package)
             
-        except ET.ParseError as e:
-            error_msg = f"XML parsing error: {str(e)}"
-            self.logger.error(error_msg)
-            return ParsingResult(False, errors=[error_msg])
         except Exception as e:
-            error_msg = f"Unexpected error parsing DTSX file: {str(e)}"
-            self.logger.error(error_msg)
-            return ParsingResult(False, errors=[error_msg])
+            error = ParsingError(
+                f"Unexpected error parsing DTSX file: {str(e)}",
+                severity=ErrorSeverity.CRITICAL,
+                file_path=str(file_path) if 'file_path' in locals() else None
+            )
+            self.error_handler.handle_error(
+                error,
+                context=create_error_context(
+                    file_path=str(file_path) if 'file_path' in locals() else None,
+                    component="DTSXParser",
+                    operation="parse_file"
+                )
+            )
+            return ParsingResult(False, errors=[str(error)])
     
     def _extract_package_metadata(self, root: ET.Element) -> SSISPackage:
         """Extract basic package metadata from the root element"""

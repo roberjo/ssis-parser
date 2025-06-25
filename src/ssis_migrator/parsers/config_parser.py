@@ -13,6 +13,10 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from ..core.logger import LoggerMixin
+from ..core.error_handler import (
+    ErrorHandler, ConfigurationError, ParsingError, create_error_context,
+    ErrorSeverity, ErrorCategory
+)
 
 
 @dataclass
@@ -39,8 +43,9 @@ class ConfigFile:
 class ConfigParser(LoggerMixin):
     """Parser for SSIS .dtsConfig files and environment variables"""
     
-    def __init__(self):
+    def __init__(self, error_handler: Optional[ErrorHandler] = None):
         self.logger.info("Configuration Parser initialized")
+        self.error_handler = error_handler or ErrorHandler()
         
         # Configuration types mapping
         self.config_types = {
@@ -72,16 +77,56 @@ class ConfigParser(LoggerMixin):
             file_path = Path(file_path)
             
             if not file_path.exists():
-                self.logger.error(f"Configuration file does not exist: {file_path}")
+                error = ConfigurationError(
+                    f"Configuration file does not exist: {file_path}",
+                    severity=ErrorSeverity.HIGH,
+                    config_file=str(file_path)
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(file_path),
+                        component="ConfigParser",
+                        operation="parse_config_file"
+                    )
+                )
                 return None
             
             if not file_path.suffix.lower() == '.dtsconfig':
-                self.logger.error(f"File is not a .dtsConfig file: {file_path}")
+                error = ConfigurationError(
+                    f"File is not a .dtsConfig file: {file_path}",
+                    severity=ErrorSeverity.MEDIUM,
+                    config_file=str(file_path)
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(file_path),
+                        component="ConfigParser",
+                        operation="parse_config_file"
+                    )
+                )
                 return None
             
             # Parse XML
-            tree = ET.parse(file_path)
-            root = tree.getroot()
+            try:
+                tree = ET.parse(file_path)
+                root = tree.getroot()
+            except ET.ParseError as e:
+                error = ParsingError(
+                    f"XML parsing error in config file: {str(e)}",
+                    severity=ErrorSeverity.HIGH,
+                    file_path=str(file_path)
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(file_path),
+                        component="ConfigParser",
+                        operation="parse_xml"
+                    )
+                )
+                return None
             
             config_file = ConfigFile(file_path=str(file_path))
             
@@ -100,13 +145,20 @@ class ConfigParser(LoggerMixin):
             
             return config_file
             
-        except ET.ParseError as e:
-            error_msg = f"XML parsing error in config file: {str(e)}"
-            self.logger.error(error_msg)
-            return None
         except Exception as e:
-            error_msg = f"Unexpected error parsing config file: {str(e)}"
-            self.logger.error(error_msg)
+            error = ConfigurationError(
+                f"Unexpected error parsing config file: {str(e)}",
+                severity=ErrorSeverity.CRITICAL,
+                config_file=str(file_path) if 'file_path' in locals() else None
+            )
+            self.error_handler.handle_error(
+                error,
+                context=create_error_context(
+                    file_path=str(file_path) if 'file_path' in locals() else None,
+                    component="ConfigParser",
+                    operation="parse_config_file"
+                )
+            )
             return None
     
     def _parse_config_entries(self, root: ET.Element) -> List[ConfigEntry]:

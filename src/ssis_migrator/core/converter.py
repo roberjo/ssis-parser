@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from .config import Config
 from .logger import LoggerMixin
+from .error_handler import (
+    ErrorHandler, ConversionError, FileSystemError, ValidationError, create_error_context,
+    ErrorSeverity, ErrorCategory
+)
 from ..parsers.dtsx_parser import DTSXParser, ParsingResult
 
 
@@ -25,9 +29,10 @@ class ConversionResult:
 class SSISConverter(LoggerMixin):
     """Main converter class for SSIS packages"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, error_handler: Optional[ErrorHandler] = None):
         self.config = config
-        self.dtsx_parser = DTSXParser()
+        self.error_handler = error_handler or ErrorHandler()
+        self.dtsx_parser = DTSXParser(error_handler=self.error_handler)
         self.logger.info("SSIS Converter initialized")
     
     def convert_package(
@@ -45,7 +50,23 @@ class SSISConverter(LoggerMixin):
         try:
             # Create output directory
             output_dir = Path(output_path)
-            output_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                output_dir.mkdir(parents=True, exist_ok=True)
+            except PermissionError as e:
+                error = FileSystemError(
+                    f"Cannot create output directory: {output_path}",
+                    severity=ErrorSeverity.HIGH,
+                    file_path=output_path
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=output_path,
+                        component="SSISConverter",
+                        operation="create_output_directory"
+                    )
+                )
+                return ConversionResult(False, output_path, [str(error)])
             
             # Parse SSIS package
             parsing_result = self.dtsx_parser.parse_file(package_path)
@@ -55,7 +76,20 @@ class SSISConverter(LoggerMixin):
             
             package = parsing_result.package
             if not package:
-                return ConversionResult(False, output_path, ["Failed to parse package"])
+                error = ConversionError(
+                    "Failed to parse package",
+                    severity=ErrorSeverity.HIGH,
+                    source_component="DTSXParser"
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=package_path,
+                        component="SSISConverter",
+                        operation="parse_package"
+                    )
+                )
+                return ConversionResult(False, output_path, [str(error)])
             
             self.logger.info(f"Successfully parsed package: {package.name}")
             self.logger.info(f"Found {len(package.connection_managers)} connection managers")
@@ -68,14 +102,42 @@ class SSISConverter(LoggerMixin):
             
             # For now, just create a summary file
             summary_file = output_dir / f"{package.name}_summary.json"
-            self._write_package_summary(package, summary_file)
+            try:
+                self._write_package_summary(package, summary_file)
+            except Exception as e:
+                error = ConversionError(
+                    f"Failed to write package summary: {str(e)}",
+                    severity=ErrorSeverity.MEDIUM,
+                    source_component="summary_writer"
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=str(summary_file),
+                        component="SSISConverter",
+                        operation="write_summary"
+                    )
+                )
+                return ConversionResult(False, output_path, [str(error)])
             
             self.logger.info(f"Package converted successfully to: {output_path}")
             return ConversionResult(True, output_path)
             
         except Exception as e:
-            self.logger.error(f"Conversion failed: {str(e)}")
-            return ConversionResult(False, output_path, [str(e)])
+            error = ConversionError(
+                f"Conversion failed: {str(e)}",
+                severity=ErrorSeverity.CRITICAL,
+                source_component="converter"
+            )
+            self.error_handler.handle_error(
+                error,
+                context=create_error_context(
+                    file_path=package_path,
+                    component="SSISConverter",
+                    operation="convert_package"
+                )
+            )
+            return ConversionResult(False, output_path, [str(error)])
     
     def convert_directory(
         self,
@@ -91,6 +153,23 @@ class SSISConverter(LoggerMixin):
         
         try:
             input_dir = Path(input_path)
+            
+            if not input_dir.exists():
+                error = FileSystemError(
+                    f"Input directory does not exist: {input_path}",
+                    severity=ErrorSeverity.HIGH,
+                    file_path=input_path
+                )
+                self.error_handler.handle_error(
+                    error,
+                    context=create_error_context(
+                        file_path=input_path,
+                        component="SSISConverter",
+                        operation="convert_directory"
+                    )
+                )
+                return ConversionResult(False, output_path, [str(error)])
+            
             output_dir = Path(output_path)
             
             # Find all .dtsx files
@@ -136,8 +215,20 @@ class SSISConverter(LoggerMixin):
                 return ConversionResult(True, output_path)
             
         except Exception as e:
-            self.logger.error(f"Directory conversion failed: {str(e)}")
-            return ConversionResult(False, output_path, [str(e)])
+            error = ConversionError(
+                f"Directory conversion failed: {str(e)}",
+                severity=ErrorSeverity.CRITICAL,
+                source_component="directory_converter"
+            )
+            self.error_handler.handle_error(
+                error,
+                context=create_error_context(
+                    file_path=input_path,
+                    component="SSISConverter",
+                    operation="convert_directory"
+                )
+            )
+            return ConversionResult(False, output_path, [str(error)])
     
     def _write_package_summary(self, package, summary_file: Path) -> None:
         """Write package summary to JSON file"""
