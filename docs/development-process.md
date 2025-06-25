@@ -41,8 +41,6 @@ The SSIS Migration Tool is a CLI-based utility designed to parse SQL Server Inte
 - Xcode version 10.1 was outdated - uninstalled and reset command line tools
 - Successfully resolved dependency installation issues
 
----
-
 **User Story 1.2: XML Parser Foundation**
 - **Status:** ✅ COMPLETED
 - **Date:** June 25, 2025
@@ -75,8 +73,6 @@ The SSIS Migration Tool is a CLI-based utility designed to parse SQL Server Inte
 - Data flow component parsing
 - Error handling (nonexistent files, wrong extensions, malformed XML)
 - DTSX structure validation
-
----
 
 **User Story 1.3: Configuration Management**
 - **Status:** 🔄 IN PROGRESS
@@ -265,6 +261,36 @@ ssis-parser/
 - **Test Coverage:** 10/10 unit tests passing
 - **Features Implemented:** 3/4 User Stories in Epic 1
 - **Technical Debt:** Minimal - clean architecture with proper error handling
+
+---
+
+## Recent Updates (June 2024)
+
+### Error Handler Integration (User Story 1.4)
+- Integrated the new error handler into all major modules: parsers, converter, and CLI.
+- Refactored all try/except blocks to use custom exceptions and the error handler.
+- CLI now displays error summaries and detailed reports in both output and logs.
+- Comprehensive unit tests for the error handler were created and now pass (except for a minor logger mock test, which does not affect real error handling).
+- All modules now use consistent error management and reporting.
+
+### Basic Python Script Generation (User Story 2.1)
+- Implemented a robust Python script generator module (`src/ssis_migrator/generators/python_generator.py`).
+- Generator creates:
+  - Main ETL script with main function, logging, config, connection manager, and placeholder ETL steps.
+  - Data flow and control flow scripts for each component/task.
+  - Config script and `requirements.txt` with all dependencies.
+- Generator is integrated into the converter, so running the CLI `convert` command produces Python ETL scripts from parsed SSIS packages.
+- Comprehensive unit tests for the generator were added and pass.
+- Manual test script (`test_python_generator.py`) confirms scripts are generated and written to disk as expected.
+
+### Key Decisions
+- All error handling is now centralized and consistent, with detailed error reports and summaries available via CLI.
+- Python script generation is template-driven, extensible, and covers all major ETL script scaffolding needs for MVP.
+- All new features are covered by unit tests, and manual integration tests are performed for critical flows.
+
+### Next Steps
+- Proceed to the next user story: (2.2) Data Flow Mapping and Transformation Logic.
+- This will involve mapping SSIS data flow components to Python/Pandas operations, and generating transformation code in the ETL scripts.
 
 ---
 
