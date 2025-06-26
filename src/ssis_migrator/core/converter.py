@@ -18,6 +18,8 @@ from ..parsers.dtsx_parser import DTSXParser, ParsingResult
 from ..parsers.config_parser import ConfigParser
 from ..generators.python_generator import PythonScriptGenerator, GenerationResult
 from ..generators.data_flow_mapper import DataFlowMapper
+from ..generators.connection_converter import ConnectionConverter
+from ..generators.variable_handler import VariableHandler
 from datetime import datetime
 
 
@@ -41,6 +43,8 @@ class SSISConverter(LoggerMixin):
         self.dtsx_parser = DTSXParser(error_handler=self.error_handler)
         self.python_generator = PythonScriptGenerator(error_handler=self.error_handler)
         self.data_flow_mapper = DataFlowMapper(error_handler=self.error_handler)
+        self.connection_converter = ConnectionConverter(error_handler=self.error_handler)
+        self.variable_handler = VariableHandler(error_handler=self.error_handler)
         self.logger.info("SSIS Converter initialized")
     
     def convert_package(
@@ -163,6 +167,46 @@ class SSISConverter(LoggerMixin):
                 self.logger.warning(f"Data flow mapping failed: {str(e)}")
                 # Continue without data flow mapping
                 data_flow_mapping = None
+            
+            # Apply connection conversion for enhanced connection management
+            try:
+                connection_result = self.connection_converter.convert_connections(package.connection_managers)
+                self.logger.info("Connection conversion completed successfully")
+                self.logger.info(f"Converted {connection_result.metadata.get('connection_count', 0)} connections")
+                
+                # Enhance generation result with connection conversion
+                generation_result.metadata.update({
+                    'connection_conversion': connection_result.metadata,
+                    'database_connections': connection_result.metadata.get('database_connections', 0),
+                    'file_connections': connection_result.metadata.get('file_connections', 0),
+                    'web_connections': connection_result.metadata.get('web_connections', 0)
+                })
+                
+            except Exception as e:
+                self.logger.warning(f"Connection conversion failed: {str(e)}")
+                # Continue without connection conversion
+                connection_result = None
+            
+            # Apply variable and parameter handling
+            try:
+                variable_result = self.variable_handler.handle_variables_and_parameters(
+                    variables=package.variables,
+                    environment_variables=package.environment_variables
+                )
+                self.logger.info("Variable handling completed successfully")
+                self.logger.info(f"Handled {variable_result.metadata.get('variable_count', 0)} variables")
+                
+                # Enhance generation result with variable handling
+                generation_result.metadata.update({
+                    'variable_handling': variable_result.metadata,
+                    'variables_processed': variable_result.metadata.get('variable_count', 0),
+                    'environment_variables': variable_result.metadata.get('environment_variable_count', 0)
+                })
+                
+            except Exception as e:
+                self.logger.warning(f"Variable handling failed: {str(e)}")
+                # Continue without variable handling
+                variable_result = None
             
             # Write generated scripts to files
             try:
