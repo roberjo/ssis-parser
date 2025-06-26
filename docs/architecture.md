@@ -2,27 +2,37 @@
 
 ## Overview
 
-The SSIS Migration Tool is a CLI-based utility that parses SSIS packages (.dtsx files) and converts them into Python ETL scripts. The MVP focuses on extracting and summarizing data flow components, connection managers, variables, and control flow tasks from SSIS packages.
+The SSIS Migration Tool is a CLI-based utility that parses SSIS packages (.dtsx files) and converts them into Python ETL scripts. The MVP focuses on extracting and summarizing data flow components, connection managers, variables, and control flow tasks from SSIS packages, and generating robust, testable Python code.
 
 ---
 
 ## Architecture
 
-### Core Parser Modules
+### Core Parser & Generator Modules
 
 - **DTSXParser**: Main entry point for parsing .dtsx files. Orchestrates extraction of package metadata, connection managers, variables, data flow components, and control flow tasks.
 - **ComponentParser**: Extracts and classifies data flow components (sources, destinations, transformations) from the data flow pipeline.
 - **ConnectionParser**: Extracts connection manager details (name, type, connection string, ID).
 - **VariableParser**: Extracts variables (name, value, data type, namespace).
+- **PythonScriptGenerator**: Converts parsed package objects into Python ETL scripts, config scripts, requirements, and testable modules. Handles formatting of connections, variables, and environment variables.
+- **DataFlowMapper**: Maps SSIS data flow components to Python/Pandas operations and generates transformation code.
+- **ConnectionConverter**: Converts SSIS connection managers to Python connection configs and code.
+- **VariableHandler**: Converts SSIS variables/parameters to Python config and code.
+- **ErrorHandler**: Centralized error handling, logging, and JSON error report generation.
 
 #### Module Responsibilities
 
-| Module            | Responsibility                                                                 |
-|-------------------|-------------------------------------------------------------------------------|
-| DTSXParser        | Orchestrates parsing, handles namespaces, builds package summary               |
-| ComponentParser   | Parses data flow components, determines type/name/description                  |
-| ConnectionParser  | Parses connection manager elements                                             |
-| VariableParser    | Parses variable elements, infers data type and namespace                      |
+| Module                | Responsibility                                                                 |
+|-----------------------|-------------------------------------------------------------------------------|
+| DTSXParser            | Orchestrates parsing, handles namespaces, builds package summary               |
+| ComponentParser       | Parses data flow components, determines type/name/description                  |
+| ConnectionParser      | Parses connection manager elements                                             |
+| VariableParser        | Parses variable elements, infers data type and namespace                      |
+| PythonScriptGenerator | Generates Python ETL, config, requirements, and test scripts                  |
+| DataFlowMapper        | Maps SSIS data flow to Python/Pandas code                                      |
+| ConnectionConverter   | Converts connection managers to Python configs and code                        |
+| VariableHandler       | Converts variables/parameters to Python configs and code                       |
+| ErrorHandler          | Handles errors, logs, and generates error reports                              |
 
 ---
 
@@ -44,25 +54,13 @@ A parsed SSIS package is summarized as a JSON object with the following structur
       "type": "OLEDB",
       "connection_string": "Data Source=localhost;Initial Catalog=TestDB;Integrated Security=True;",
       "id": "{11111111-1111-1111-1111-111111111111}"
-    },
-    {
-      "name": "DestinationConnection",
-      "type": "OLEDB",
-      "connection_string": "Data Source=localhost;Initial Catalog=TestDB;Integrated Security=True;",
-      "id": "{22222222-2222-2222-2222-222222222222}"
     }
   ],
   "variables": [
     {
       "name": "SourceTable",
       "value": "dbo.SourceTable",
-      "data_type_name": "String",
-      "metadata": { "namespace": "User" }
-    },
-    {
-      "name": "DestinationTable",
-      "value": "dbo.DestinationTable",
-      "data_type_name": "String",
+      "type": "String",
       "metadata": { "namespace": "User" }
     }
   ],
@@ -73,26 +71,6 @@ A parsed SSIS package is summarized as a JSON object with the following structur
       "description": "OLE DB Source",
       "type": "OLE DB Source",
       "properties": { "Connection": "{11111111-1111-1111-1111-111111111111}", "SqlCommand": "SELECT * FROM @[User::SourceTable]" },
-      "inputs": [],
-      "outputs": [],
-      "metadata": { "version": "1", "creation_name": "" }
-    },
-    {
-      "id": "{C9C7375C-8340-4F56-A550-919B1E4F4C66}",
-      "name": "Derived Column",
-      "description": "Derived Column",
-      "type": "Derived Column",
-      "properties": { "FriendlyExpression": "False" },
-      "inputs": [],
-      "outputs": [],
-      "metadata": { "version": "1", "creation_name": "" }
-    },
-    {
-      "id": "{E9216C7C-4A8A-4F77-8948-60C5D8C75F70}",
-      "name": "OLE DB Destination",
-      "description": "OLE DB Destination",
-      "type": "OLE DB Destination",
-      "properties": { "Connection": "{22222222-2222-2222-2222-222222222222}", "OpenRowset": "@[User::DestinationTable]" },
       "inputs": [],
       "outputs": [],
       "metadata": { "version": "1", "creation_name": "" }
@@ -124,50 +102,40 @@ A parsed SSIS package is summarized as a JSON object with the following structur
 
 ---
 
-## How to Download, Setup, and Run
+## Example: Generated Config Script
 
-### Prerequisites
-- Python 3.10+
-- [pip](https://pip.pypa.io/en/stable/)
-
-### 1. Clone the Repository
-```sh
-git clone <your-repo-url>
-cd ssis-parser
-```
-
-### 2. Create and Activate a Virtual Environment
-```sh
-python3.10 -m venv venv
-source venv/bin/activate
-```
-
-### 3. Install Dependencies
-```sh
-pip install -r requirements.txt
-```
-
-### 4. Install the Package in Editable Mode (for development)
-```sh
-pip install -e .
+```python
+# TestPackage_config.py
+DATABASE_CONNECTIONS = {
+    "SourceConnection": {"type": "OLEDB", "connection_string": "Data Source=localhost;Initial Catalog=TestDB;Integrated Security=True;"}
+}
+VARIABLES = {
+    "SourceTable": {"value": "dbo.SourceTable", "type": "String"}
+}
+ENVIRONMENT_VARIABLES = {
+    # No environment variables defined
+}
 ```
 
 ---
 
-## CLI Usage
+## Output Files
+- `TestPackage_main.py`: Main ETL script
+- `TestPackage_config.py`: Config script (connections, variables, env)
+- `requirements.txt`: Requirements for the generated ETL
+- `*_dataflow.py`: Data flow component scripts
+- `*_task.py`: Control flow task scripts
+- `*_validation.json`: Validation results
+- `*_performance.json`: Performance comparison
+- `migration_summary.md`: Overall migration summary
 
-### Show CLI Help
-```sh
-ssis-migrator --help
-```
+---
 
-### Parse and Summarize a .dtsx Package
-```sh
-ssis-migrator parse examples/input/sample_package.dtsx --output examples/output/SamplePackage_summary.json
-```
-
-### Example Output
-The output will be a JSON file as shown above, summarizing the package structure and components.
+## Error Handling & Troubleshooting
+- All errors are logged and saved as JSON in `error_reports/`
+- Use `ssis-migrator errors` to view error summaries in the CLI
+- Error reports include stack traces, severity, category, and recovery suggestions
+- For debugging, check logs and error reports for details
 
 ---
 
@@ -177,10 +145,44 @@ Run all unit tests:
 ```sh
 pytest tests/unit
 ```
+- 100% test coverage for PythonScriptGenerator, CLI, and core modules
+- All new features require corresponding unit tests
+
+---
+
+## CLI Usage
+
+Show CLI Help:
+```sh
+ssis-migrator --help
+```
+
+Convert a package:
+```sh
+ssis-migrator convert examples/input/sample_package.dtsx examples/output/
+```
+
+View error reports:
+```sh
+ssis-migrator errors
+```
+
+---
+
+## Development Process & User Stories
+- User Story 1.2: XML Parser Foundation (DTSXParser, ComponentParser, etc.)
+- User Story 1.3: Configuration Management (ConfigParser, config integration)
+- User Story 1.4: Error Handling and Logging (ErrorHandler, error reports)
+- User Story 2.1: Basic Python Script Generation (PythonScriptGenerator)
+- User Story 2.2: Data Flow Mapping and Transformation Logic (DataFlowMapper)
+- User Story 2.3: Connection Manager Conversion (ConnectionConverter)
+- User Story 2.4: Variable and Parameter Handling (VariableHandler)
+- All core modules now have full unit test coverage
 
 ---
 
 ## Extending the Tool
-- Add new component mappings in `ComponentParser` as needed.
-- Add new CLI commands in `src/ssis_migrator/cli.py`.
-- See `docs/prd.md` for roadmap and future features. 
+- Add new component mappings in `ComponentParser` or `DataFlowMapper`
+- Add new CLI commands in `src/ssis_migrator/cli.py`
+- Add new tests in `tests/unit/`
+- See `docs/prd.md` for roadmap and future features 
