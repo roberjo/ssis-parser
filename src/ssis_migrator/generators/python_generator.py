@@ -202,31 +202,20 @@ def process_data_flow_{component_id}(data_source, data_destination, config):
         
         # Template for control flow tasks
         self.control_flow_template = '''
-def execute_task_{task_id}(config):
-    """Execute control flow task: {task_name}"""
+def execute_control_flow(config):
+    """Execute control flow tasks"""
     logger = logging.getLogger(__name__)
-    logger.info(f"Executing task: {{task_name}}")
+    logger.info("Executing control flow tasks")
     
     try:
-        # TODO: Implement specific task logic
-        # This is a placeholder for the actual task execution logic
+        # TODO: Implement control flow logic
+        # This is a placeholder for the actual control flow execution
         
-        # Example: Execute SQL script
-        # with connection.cursor() as cursor:
-        #     cursor.execute(sql_script)
-        #     connection.commit()
-        
-        # Example: Send email notification
-        # send_email(recipients, subject, body)
-        
-        # Example: File operations
-        # shutil.copy(source, destination)
-        
-        logger.info(f"Task {{task_name}} completed successfully")
+        logger.info("Control flow execution completed successfully")
         return True
         
     except Exception as e:
-        logger.error(f"Task {{task_name}} failed: {{str(e)}}")
+        logger.error(f"Control flow execution failed: {{str(e)}}")
         raise
 '''
     
@@ -297,7 +286,7 @@ def execute_task_{task_id}(config):
     
     def _generate_main_script(self, package: SSISPackage) -> PythonScript:
         """Generate main ETL script"""
-        script_name = f"{package.name.lower().replace(' ', '_')}_etl.py"
+        script_name = f"{package.name.replace(' ', '_')}_main.py"
         
         # Collect imports based on package components
         imports = self._collect_imports(package)
@@ -335,40 +324,39 @@ def execute_task_{task_id}(config):
     def _collect_imports(self, package: SSISPackage) -> List[str]:
         """Collect required imports based on package components"""
         imports = [
-            "import pandas as pd",
-            "import sqlalchemy as sa",
-            "from sqlalchemy import create_engine, text",
-            "import configparser",
-            "import logging",
-            "from datetime import datetime, timedelta",
-            "import traceback"
+            "pandas",
+            "sqlalchemy",
+            "configparser",
+            "logging",
+            "datetime",
+            "traceback"
         ]
         
         # Add imports based on connection managers
         for conn in package.connection_managers:
             conn_type = conn.get('connection_type', '').lower()
             if 'sqlserver' in conn_type or 'mssql' in conn_type:
-                imports.append("import pymssql")
+                imports.append("pymssql")
             elif 'postgresql' in conn_type or 'postgres' in conn_type:
-                imports.append("import psycopg2")
+                imports.append("psycopg2")
             elif 'mysql' in conn_type:
-                imports.append("import pymysql")
+                imports.append("pymysql")
             elif 'oracle' in conn_type:
-                imports.append("import cx_Oracle")
+                imports.append("cx_Oracle")
             elif 'odbc' in conn_type:
-                imports.append("import pyodbc")
+                imports.append("pyodbc")
         
         # Add imports based on data flow components
         for component in package.data_flow_components:
             component_type = component.get('component_type', '').lower()
             if 'file' in component_type:
                 imports.extend([
-                    "import csv",
-                    "import json",
-                    "import xml.etree.ElementTree as ET"
+                    "csv",
+                    "json",
+                    "xml.etree.ElementTree"
                 ])
             elif 'transform' in component_type:
-                imports.append("import numpy as np")
+                imports.append("numpy")
         
         # Remove duplicates and sort
         return sorted(list(set(imports)))
@@ -441,14 +429,18 @@ def execute_task_{task_id}(config):
         # Add data flow execution steps
         for i, component in enumerate(package.data_flow_components):
             component_id = component.get('component_id', f'component_{i}')
-            component_name = component.get('component_name', f'DataFlow_{i}')
+            component_name = component.get('name', f'DataFlow_{i}')
             steps.append(f"        process_data_flow_{component_id}(None, None, config)")
         
         # Add control flow execution steps
         for i, task in enumerate(package.control_flow_tasks):
             task_id = task.get('task_id', f'task_{i}')
-            task_name = task.get('task_name', f'Task_{i}')
+            task_name = task.get('name', f'Task_{i}')
             steps.append(f"        execute_task_{task_id}(config)")
+        
+        # Add execute_control_flow call if there are control flow tasks
+        if package.control_flow_tasks:
+            steps.append("        execute_control_flow(config)")
         
         return "\n".join(steps)
     
@@ -610,18 +602,20 @@ PACKAGE_METADATA = {{
         """Format connection managers for config"""
         formatted = []
         for conn in connections:
-            conn_name = conn.get('connection_name', 'Unknown')
-            conn_type = conn.get('connection_type', 'Unknown')
-            formatted.append(f'    "{conn_name}": {{"type": "{conn_type}"}}')
+            conn_name = conn.get('name', 'Unknown')
+            conn_type = conn.get('type', conn.get('connection_type', 'Unknown'))
+            conn_string = conn.get('connection_string', '')
+            formatted.append(f'    "{conn_name}": {{"type": "{conn_type}", "connection_string": "{conn_string}"}}')
         return ",\n".join(formatted) if formatted else "    # No connections defined"
     
     def _format_variables(self, variables: List[Dict[str, Any]]) -> str:
         """Format variables for config"""
         formatted = []
         for var in variables:
-            var_name = var.get('variable_name', 'Unknown')
-            var_value = var.get('variable_value', '')
-            formatted.append(f'    "{var_name}": "{var_value}"')
+            var_name = var.get('name', 'Unknown')
+            var_value = var.get('value', '')
+            var_type = var.get('type', 'String')
+            formatted.append(f'    "{var_name}": "{{"value": "{var_value}", "type": "{var_type}"}}"')
         return ",\n".join(formatted) if formatted else "    # No variables defined"
     
     def _format_environment_variables(self, env_vars: Dict[str, str]) -> str:
@@ -630,6 +624,92 @@ PACKAGE_METADATA = {{
         for key, value in env_vars.items():
             formatted.append(f'    "{key}": "{value}"')
         return ",\n".join(formatted) if formatted else "    # No environment variables defined"
+    
+    def _generate_data_flow_functions(self, package: SSISPackage) -> str:
+        """Generate data flow functions"""
+        functions = []
+        for i, component in enumerate(package.data_flow_components):
+            component_id = component.get('component_id', f'component_{i}')
+            component_name = component.get('name', f'DataFlow_{i}')
+            
+            function_content = f'''
+def process_data_flow_{component_id}(data_source, data_destination, config):
+    """Process data flow component: {component_name}"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Processing data flow: {{component_name}}")
+    
+    try:
+        # TODO: Implement specific data flow logic for {component_name}
+        # This is a placeholder for the actual data processing logic
+        
+        logger.info(f"Data flow {{component_name}} completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Data flow {{component_name}} failed: {{str(e)}}")
+        raise
+'''
+            functions.append(function_content)
+        
+        return "\n".join(functions) if functions else "# No data flow components found"
+    
+    def _generate_control_flow_functions(self, package: SSISPackage) -> str:
+        """Generate control flow functions"""
+        functions = []
+        
+        # Add individual task functions
+        for i, task in enumerate(package.control_flow_tasks):
+            task_id = task.get('task_id', f'task_{i}')
+            task_name = task.get('name', f'Task_{i}')
+            
+            function_content = f'''
+def execute_task_{task_id}(config):
+    """Execute control flow task: {task_name}"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Executing task: {{task_name}}")
+    
+    try:
+        # TODO: Implement specific task logic for {task_name}
+        # This is a placeholder for the actual task execution logic
+        
+        logger.info(f"Task {{task_name}} completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Task {{task_name}} failed: {{str(e)}}")
+        raise
+'''
+            functions.append(function_content)
+        
+        # Add the main execute_control_flow function
+        if package.control_flow_tasks:
+            control_flow_function = '''
+def execute_control_flow(config):
+    """Execute all control flow tasks"""
+    logger = logging.getLogger(__name__)
+    logger.info("Executing control flow tasks")
+    
+    try:
+        # Execute all tasks in sequence
+'''
+            for i, task in enumerate(package.control_flow_tasks):
+                task_id = task.get('task_id', f'task_{i}')
+                task_name = task.get('name', f'Task_{i}')
+                control_flow_function += f'''
+        # Execute task: {task_name}
+        execute_task_{task_id}(config)
+'''
+            control_flow_function += '''
+        logger.info("All control flow tasks completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Control flow execution failed: {str(e)}")
+        raise
+'''
+            functions.append(control_flow_function)
+        
+        return "\n".join(functions) if functions else "# No control flow tasks found"
     
     # Placeholder methods for specific component/task logic generation
     def _generate_source_component_logic(self, component: Dict[str, Any], package: SSISPackage) -> str:
