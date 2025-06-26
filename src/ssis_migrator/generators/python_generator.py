@@ -14,6 +14,7 @@ from ..core.error_handler import (
     ErrorSeverity, ErrorCategory
 )
 from ..parsers.dtsx_parser import SSISPackage
+from .data_flow_mapper import DataFlowMapper, DataFlowMapping
 
 
 @dataclass
@@ -42,6 +43,9 @@ class PythonScriptGenerator(LoggerMixin):
     def __init__(self, error_handler: Optional[ErrorHandler] = None):
         self.error_handler = error_handler or ErrorHandler()
         self.logger.info("Python Script Generator initialized")
+        
+        # Initialize data flow mapper
+        self.data_flow_mapper = DataFlowMapper(error_handler=self.error_handler)
         
         # Standard ETL dependencies
         self.standard_dependencies = [
@@ -386,20 +390,49 @@ def execute_task_{task_id}(config):
         return sorted(list(set(dependencies)))
     
     def _generate_data_processing_functions(self, package: SSISPackage) -> str:
-        """Generate data processing functions"""
-        functions = []
-        
-        for i, component in enumerate(package.data_flow_components):
-            component_id = component.get('component_id', f'component_{i}')
-            component_name = component.get('component_name', f'DataFlow_{i}')
+        """Generate data processing functions using data flow mapper"""
+        try:
+            # Use data flow mapper to generate enhanced transformation code
+            data_flow_mapping = self.data_flow_mapper.map_data_flow(package.data_flow_components)
             
-            function_content = self.data_flow_template.format(
-                component_id=component_id,
-                component_name=component_name
-            )
-            functions.append(function_content)
-        
-        return "\n".join(functions)
+            # Combine all the generated code
+            functions = []
+            
+            # Add error handling functions
+            if data_flow_mapping.error_handling:
+                functions.append(data_flow_mapping.error_handling)
+            
+            # Add transformation functions from data flow mapper
+            if data_flow_mapping.source_code:
+                functions.append(data_flow_mapping.source_code)
+            
+            if data_flow_mapping.transformation_code:
+                functions.append(data_flow_mapping.transformation_code)
+            
+            if data_flow_mapping.destination_code:
+                functions.append(data_flow_mapping.destination_code)
+            
+            # Add validation functions
+            if data_flow_mapping.validation_code:
+                functions.append(data_flow_mapping.validation_code)
+            
+            return "\n".join(functions) if functions else "# No data flow components found"
+            
+        except Exception as e:
+            self.logger.warning(f"Data flow mapping failed: {str(e)}, using basic template")
+            # Fall back to basic template
+            functions = []
+            for i, component in enumerate(package.data_flow_components):
+                component_id = component.get('component_id', f'component_{i}')
+                component_name = component.get('component_name', f'DataFlow_{i}')
+                
+                function_content = self.data_flow_template.format(
+                    component_id=component_id,
+                    component_name=component_name
+                )
+                functions.append(function_content)
+            
+            return "\n".join(functions)
     
     def _generate_main_execution_steps(self, package: SSISPackage) -> str:
         """Generate main execution steps"""

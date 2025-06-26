@@ -5,8 +5,9 @@ SSIS Package Converter - Core conversion logic
 
 import logging
 import json
+import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from .config import Config
 from .logger import LoggerMixin
 from .error_handler import (
@@ -14,7 +15,9 @@ from .error_handler import (
     ErrorSeverity, ErrorCategory
 )
 from ..parsers.dtsx_parser import DTSXParser, ParsingResult
+from ..parsers.config_parser import ConfigParser
 from ..generators.python_generator import PythonScriptGenerator, GenerationResult
+from ..generators.data_flow_mapper import DataFlowMapper
 from datetime import datetime
 
 
@@ -37,6 +40,7 @@ class SSISConverter(LoggerMixin):
         self.error_handler = error_handler or ErrorHandler()
         self.dtsx_parser = DTSXParser(error_handler=self.error_handler)
         self.python_generator = PythonScriptGenerator(error_handler=self.error_handler)
+        self.data_flow_mapper = DataFlowMapper(error_handler=self.error_handler)
         self.logger.info("SSIS Converter initialized")
     
     def convert_package(
@@ -142,6 +146,23 @@ class SSISConverter(LoggerMixin):
             
             if not generation_result.success:
                 return ConversionResult(False, output_path, generation_result.errors)
+            
+            # Apply data flow mapping for enhanced transformations
+            try:
+                data_flow_mapping = self.data_flow_mapper.map_data_flow(package.data_flow_components)
+                self.logger.info("Data flow mapping completed successfully")
+                self.logger.info(f"Mapped {data_flow_mapping.metadata.get('component_count', 0)} components")
+                
+                # Enhance generation result with data flow mapping
+                generation_result.metadata.update({
+                    'data_flow_mapping': data_flow_mapping.metadata,
+                    'transformation_rules_applied': len(data_flow_mapping.dependencies)
+                })
+                
+            except Exception as e:
+                self.logger.warning(f"Data flow mapping failed: {str(e)}")
+                # Continue without data flow mapping
+                data_flow_mapping = None
             
             # Write generated scripts to files
             try:
