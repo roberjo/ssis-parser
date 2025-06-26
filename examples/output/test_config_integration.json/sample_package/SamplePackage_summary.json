@@ -1,0 +1,101 @@
+{
+  "package_name": "SamplePackage",
+  "version": "0.0.0",
+  "description": "",
+  "creation_date": "2025-01-01T00:00:00.000",
+  "creator": "Developer",
+  "package_id": "{87654321-4321-4321-4321-210987654321}",
+  "connection_managers": [
+    {
+      "name": "SourceConnection",
+      "type": "OLEDB",
+      "connection_string": "Data Source=localhost;Initial Catalog=TestDB;Integrated Security=True;"
+    },
+    {
+      "name": "DestinationConnection",
+      "type": "OLEDB",
+      "connection_string": "Data Source=localhost;Initial Catalog=TestDB;Integrated Security=True;"
+    }
+  ],
+  "variables": [
+    {
+      "name": "SourceTable",
+      "data_type": "String",
+      "value": "dbo.SourceTable",
+      "namespace": "User"
+    },
+    {
+      "name": "DestinationTable",
+      "data_type": "String",
+      "value": "dbo.DestinationTable",
+      "namespace": "User"
+    },
+    {
+      "name": "FilterCondition",
+      "data_type": "String",
+      "value": "Status = 'Active'",
+      "namespace": "User"
+    }
+  ],
+  "data_flow_components": [
+    {
+      "name": "OLE DB Source",
+      "type": "OLE DB Source",
+      "description": "OLE DB Source"
+    },
+    {
+      "name": "Derived Column",
+      "type": "Derived Column",
+      "description": "Derived Column"
+    },
+    {
+      "name": "OLE DB Destination",
+      "type": "OLE DB Destination",
+      "description": "OLE DB Destination"
+    }
+  ],
+  "control_flow_tasks": [
+    {
+      "name": "Execute SQL Task 1",
+      "type": "Microsoft.PackageTask",
+      "description": ""
+    }
+  ],
+  "configuration_files": [
+    {
+      "file_path": "examples/input/sample_package.dtsConfig",
+      "entries_count": 11,
+      "environment_variables": [],
+      "encrypted_entries": [
+        "\\Package.Connections[SecureConnection].Properties[ConnectionString]",
+        "\\Package.Variables[User::ApiKey].Properties[Value]"
+      ]
+    },
+    {
+      "file_path": "examples/input/sample_package.dtsconfig",
+      "entries_count": 11,
+      "environment_variables": [],
+      "encrypted_entries": [
+        "\\Package.Connections[SecureConnection].Properties[ConnectionString]",
+        "\\Package.Variables[User::ApiKey].Properties[Value]"
+      ]
+    },
+    {
+      "file_path": "examples/input/sample_package.dtsConfig",
+      "entries_count": 11,
+      "environment_variables": [],
+      "encrypted_entries": [
+        "\\Package.Connections[SecureConnection].Properties[ConnectionString]",
+        "\\Package.Variables[User::ApiKey].Properties[Value]"
+      ]
+    }
+  ],
+  "environment_variables": null,
+  "metadata": {
+    "executable_type": "Microsoft.Package",
+    "creation_name": "Microsoft.Package",
+    "creator_computer": "DESKTOP-ABC123",
+    "package_type": "5",
+    "version_guid": "{12345678-1234-1234-1234-123456789012}"
+  }
+}

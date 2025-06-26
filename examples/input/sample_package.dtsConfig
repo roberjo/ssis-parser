@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<DTSConfiguration>
+  <DTSConfigurationHeading>
+    <DTSConfigurationFileInfo GeneratedBy="Developer" GeneratedFromPackageName="SamplePackage" GeneratedFromPackageID="{87654321-4321-4321-4321-210987654321}" GeneratedDate="2025-01-01T00:00:00.000" />
+  </DTSConfigurationHeading>
+  <Configuration ConfiguredType="Property" Path="\Package.Connections[SourceConnection].Properties[ConnectionString]" ValueType="String">
+    <ConfiguredValue>Data Source=$(SERVER_NAME);Initial Catalog=$(DATABASE_NAME);Integrated Security=True;</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Connections[DestinationConnection].Properties[ConnectionString]" ValueType="String">
+    <ConfiguredValue>Data Source=localhost;Initial Catalog=TestDB;Integrated Security=True;</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Variables[User::SourceTable].Properties[Value]" ValueType="String">
+    <ConfiguredValue>dbo.SourceTable</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Variables[User::DestinationTable].Properties[Value]" ValueType="String">
+    <ConfiguredValue>dbo.DestinationTable</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Variables[User::FilterCondition].Properties[Value]" ValueType="String">
+    <ConfiguredValue>Status = 'Active'</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Connections[SecureConnection].Properties[ConnectionString]" ValueType="String" Encrypted="true">
+    <ConfiguredValue>AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAH2bSblaBp0G+QxqgqQQqQQAAAACAAAAAAADZgAAqAAAABAAAABcR8m0aK9HjaFzBQAAAAAASAAACgAAAAEAAAAUAAAAAAABAAAAAABbQAAABAAAAFQAAAAEAAAARwAAABAAAAA=</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Variables[User::ApiKey].Properties[Value]" ValueType="String" Encrypted="true">
+    <ConfiguredValue>AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAH2bSblaBp0G+QxqgqQQqQQAAAACAAAAAAADZgAAqAAAABAAAABcR8m0aK9HjaFzBQAAAAAASAAACgAAAAEAAAAUAAAAAAABAAAAAABbQAAABAAAAFQAAAAEAAAARwAAABAAAAA=</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Connections[FileConnection].Properties[ConnectionString]" ValueType="String">
+    <ConfiguredValue>%TEMP%\data\input\sample.csv</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Variables[User::BatchSize].Properties[Value]" ValueType="Int32">
+    <ConfiguredValue>1000</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Variables[User::EnableLogging].Properties[Value]" ValueType="Boolean">
+    <ConfiguredValue>True</ConfiguredValue>
+  </Configuration>
+  <Configuration ConfiguredType="Property" Path="\Package.Variables[User::Timeout].Properties[Value]" ValueType="Double">
+    <ConfiguredValue>30.5</ConfiguredValue>
+  </Configuration>
+</DTSConfiguration> 

@@ -1,0 +1,49 @@
+{
+  "package_name": "Unknown",
+  "version": "0.0.0",
+  "description": "",
+  "creation_date": "",
+  "creator": "",
+  "package_id": "",
+  "connection_managers": [
+    {
+      "name": "Unknown",
+      "type": "",
+      "connection_string": ""
+    },
+    {
+      "name": "Unknown",
+      "type": "",
+      "connection_string": ""
+    }
+  ],
+  "variables": [
+    {
+      "name": "Unknown",
+      "data_type": "String",
+      "value": "",
+      "namespace": "User"
+    },
+    {
+      "name": "Unknown",
+      "data_type": "String",
+      "value": "",
+      "namespace": "User"
+    },
+    {
+      "name": "Unknown",
+      "data_type": "String",
+      "value": "",
+      "namespace": "User"
+    }
+  ],
+  "data_flow_components": [],
+  "control_flow_tasks": [],
+  "metadata": {
+    "executable_type": "",
+    "creation_name": "",
+    "creator_computer": "",
+    "package_type": "",
+    "version_guid": ""
+  }
+}

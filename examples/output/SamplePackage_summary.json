@@ -1,0 +1,71 @@
+{
+  "package_name": "SamplePackage",
+  "version": "0.0.0",
+  "description": "",
+  "creation_date": "2025-01-01T00:00:00.000",
+  "creator": "Developer",
+  "package_id": "{87654321-4321-4321-4321-210987654321}",
+  "connection_managers": [
+    {
+      "name": "SourceConnection",
+      "type": "OLEDB",
+      "connection_string": "Data Source=localhost;Initial Catalog=TestDB;Integrated Security=True;"
+    },
+    {
+      "name": "DestinationConnection",
+      "type": "OLEDB",
+      "connection_string": "Data Source=localhost;Initial Catalog=TestDB;Integrated Security=True;"
+    }
+  ],
+  "variables": [
+    {
+      "name": "SourceTable",
+      "data_type": "String",
+      "value": "dbo.SourceTable",
+      "namespace": "User"
+    },
+    {
+      "name": "DestinationTable",
+      "data_type": "String",
+      "value": "dbo.DestinationTable",
+      "namespace": "User"
+    },
+    {
+      "name": "FilterCondition",
+      "data_type": "String",
+      "value": "Status = 'Active'",
+      "namespace": "User"
+    }
+  ],
+  "data_flow_components": [
+    {
+      "name": "Unknown",
+      "type": "Unknown",
+      "description": ""
+    },
+    {
+      "name": "Unknown",
+      "type": "Unknown",
+      "description": ""
+    },
+    {
+      "name": "Unknown",
+      "type": "Unknown",
+      "description": ""
+    }
+  ],
+  "control_flow_tasks": [
+    {
+      "name": "Execute SQL Task 1",
+      "type": "Microsoft.PackageTask",
+      "description": ""
+    }
+  ],
+  "metadata": {
+    "executable_type": "Microsoft.Package",
+    "creation_name": "Microsoft.Package",
+    "creator_computer": "DESKTOP-ABC123",
+    "package_type": "5",
+    "version_guid": "{12345678-1234-1234-1234-123456789012}"
+  }
+}
