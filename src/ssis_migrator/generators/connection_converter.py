@@ -158,7 +158,7 @@ class ConnectionConverter(LoggerMixin):
                         context=create_error_context(
                             component="ConnectionConverter",
                             operation="convert_single_connection",
-                            connection_name=conn_manager.get('name', 'Unknown')
+                            user_input=conn_manager.get('name', 'Unknown')
                         )
                     )
                     continue
@@ -179,7 +179,7 @@ class ConnectionConverter(LoggerMixin):
                     'connection_count': len(python_connections),
                     'database_connections': len([c for c in python_connections if c.connection_type in ['database', 'oledb', 'ado_net']]),
                     'file_connections': len([c for c in python_connections if c.connection_type in ['flat_file', 'excel', 'xml', 'file']]),
-                    'web_connections': len([c for c in python_connections if c.connection_type in ['http', 'ftp', 'smtp']])
+                    'web_connections': len([c for c in python_connections if c.connection_type in ['http', 'ftp', 'smtp', 'web']])
                 }
             )
             
@@ -244,9 +244,15 @@ class ConnectionConverter(LoggerMixin):
         """Get database provider from connection string or provider name"""
         provider_upper = provider.upper()
         
+        # Check explicit provider mappings
         for key, value in self.provider_mappings.items():
             if key.upper() in provider_upper:
                 return value
+        
+        # For OLE DB connections without explicit provider, try to infer from connection string
+        if not provider or provider.upper() == 'OLEDB':
+            # Default to SQL Server for OLE DB connections without explicit provider
+            return DatabaseProvider.SQL_SERVER
         
         return DatabaseProvider.UNKNOWN
     
@@ -431,12 +437,220 @@ def get_{conn_name.lower().replace(' ', '_')}_connection():
             dependencies=[]
         )
     
+    def _convert_ado_net_connection(self, conn_manager: Dict[str, Any]) -> PythonConnection:
+        """Convert ADO.NET connection to Python"""
+        conn_name = conn_manager.get('name', 'Unknown')
+        connection_string = conn_manager.get('connection_string', '')
+        
+        # Parse connection string
+        params = self._parse_connection_string(connection_string)
+        
+        # Determine provider
+        provider = self._get_database_provider(params.get('provider', ''))
+        
+        # Create connection config
+        config = ConnectionConfig(
+            name=conn_name,
+            connection_type=ConnectionType.ADO_NET,
+            provider=provider,
+            connection_string=connection_string,
+            host=params.get('server') or params.get('host'),
+            database=params.get('database') or params.get('initial catalog'),
+            username=params.get('user id') or params.get('username'),
+            password=params.get('password'),
+            timeout=params.get('timeout'),
+            additional_params=params
+        )
+        
+        # Generate Python code based on provider
+        if provider == DatabaseProvider.SQL_SERVER:
+            python_code = self._generate_sql_server_connection(config)
+            imports = ["import pyodbc", "import sqlalchemy"]
+            dependencies = ["pyodbc", "sqlalchemy"]
+        elif provider == DatabaseProvider.ORACLE:
+            python_code = self._generate_oracle_connection(config)
+            imports = ["import cx_Oracle", "import sqlalchemy"]
+            dependencies = ["cx_Oracle", "sqlalchemy"]
+        elif provider == DatabaseProvider.MYSQL:
+            python_code = self._generate_mysql_connection(config)
+            imports = ["import pymysql", "import sqlalchemy"]
+            dependencies = ["pymysql", "sqlalchemy"]
+        elif provider == DatabaseProvider.POSTGRESQL:
+            python_code = self._generate_postgresql_connection(config)
+            imports = ["import psycopg2", "import sqlalchemy"]
+            dependencies = ["psycopg2-binary", "sqlalchemy"]
+        else:
+            python_code = self._generate_generic_connection(config)
+            imports = ["import sqlalchemy"]
+            dependencies = ["sqlalchemy"]
+        
+        return PythonConnection(
+            name=conn_name,
+            connection_type="database",
+            config=config,
+            python_code=python_code,
+            imports=imports,
+            dependencies=dependencies
+        )
+    
+    def _convert_xml_connection(self, conn_manager: Dict[str, Any]) -> PythonConnection:
+        """Convert XML connection to Python"""
+        conn_name = conn_manager.get('name', 'Unknown')
+        file_path = conn_manager.get('file_path', '')
+        
+        config = ConnectionConfig(
+            name=conn_name,
+            connection_type=ConnectionType.XML,
+            provider=DatabaseProvider.UNKNOWN,
+            file_path=file_path
+        )
+        
+        python_code = f"""
+def get_{conn_name.lower().replace(' ', '_')}_connection():
+    \"\"\"Get XML connection for {conn_name}\"\"\"
+    import xml.etree.ElementTree as ET
+    from pathlib import Path
+    
+    try:
+        file_path = Path("{file_path}")
+        
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {{file_path}}")
+        
+        # Parse XML file
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+        
+        return root
+        
+    except Exception as e:
+        raise Exception(f"Failed to read XML file: {{str(e)}}")
+"""
+        
+        return PythonConnection(
+            name=conn_name,
+            connection_type="file",
+            config=config,
+            python_code=python_code,
+            imports=["import xml.etree.ElementTree as ET"],
+            dependencies=[]
+        )
+    
+    def _convert_ftp_connection(self, conn_manager: Dict[str, Any]) -> PythonConnection:
+        """Convert FTP connection to Python"""
+        conn_name = conn_manager.get('name', 'Unknown')
+        url = conn_manager.get('url', '')
+        
+        config = ConnectionConfig(
+            name=conn_name,
+            connection_type=ConnectionType.FTP,
+            provider=DatabaseProvider.UNKNOWN,
+            url=url
+        )
+        
+        python_code = f"""
+def get_{conn_name.lower().replace(' ', '_')}_connection():
+    \"\"\"Get FTP connection for {conn_name}\"\"\"
+    from ftplib import FTP
+    
+    try:
+        # Parse FTP URL: {url}
+        # TODO: Implement FTP connection logic
+        raise NotImplementedError("FTP connections not yet implemented")
+        
+    except Exception as e:
+        raise Exception(f"Failed to connect to FTP: {{str(e)}}")
+"""
+        
+        return PythonConnection(
+            name=conn_name,
+            connection_type="web",
+            config=config,
+            python_code=python_code,
+            imports=["from ftplib import FTP"],
+            dependencies=[]
+        )
+    
+    def _convert_smtp_connection(self, conn_manager: Dict[str, Any]) -> PythonConnection:
+        """Convert SMTP connection to Python"""
+        conn_name = conn_manager.get('name', 'Unknown')
+        url = conn_manager.get('url', '')
+        
+        config = ConnectionConfig(
+            name=conn_name,
+            connection_type=ConnectionType.SMTP,
+            provider=DatabaseProvider.UNKNOWN,
+            url=url
+        )
+        
+        python_code = f"""
+def get_{conn_name.lower().replace(' ', '_')}_connection():
+    \"\"\"Get SMTP connection for {conn_name}\"\"\"
+    import smtplib
+    
+    try:
+        # Parse SMTP URL: {url}
+        # TODO: Implement SMTP connection logic
+        raise NotImplementedError("SMTP connections not yet implemented")
+        
+    except Exception as e:
+        raise Exception(f"Failed to connect to SMTP: {{str(e)}}")
+"""
+        
+        return PythonConnection(
+            name=conn_name,
+            connection_type="web",
+            config=config,
+            python_code=python_code,
+            imports=["import smtplib"],
+            dependencies=[]
+        )
+    
+    def _convert_file_connection(self, conn_manager: Dict[str, Any]) -> PythonConnection:
+        """Convert FILE connection to Python"""
+        conn_name = conn_manager.get('name', 'Unknown')
+        file_path = conn_manager.get('file_path', '')
+        
+        config = ConnectionConfig(
+            name=conn_name,
+            connection_type=ConnectionType.FILE,
+            provider=DatabaseProvider.UNKNOWN,
+            file_path=file_path
+        )
+        
+        python_code = f"""
+def get_{conn_name.lower().replace(' ', '_')}_connection():
+    \"\"\"Get file connection for {conn_name}\"\"\"
+    from pathlib import Path
+    
+    try:
+        file_path = Path("{file_path}")
+        
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {{file_path}}")
+        
+        return file_path
+        
+    except Exception as e:
+        raise Exception(f"Failed to access file: {{str(e)}}")
+"""
+        
+        return PythonConnection(
+            name=conn_name,
+            connection_type="file",
+            config=config,
+            python_code=python_code,
+            imports=[],
+            dependencies=[]
+        )
+    
     def _generate_sql_server_connection(self, config: ConnectionConfig) -> str:
         """Generate SQL Server connection code"""
         return f"""
 def get_{config.name.lower().replace(' ', '_')}_connection():
     \"\"\"Get SQL Server connection for {config.name}\"\"\"
     import pyodbc
+    import sqlalchemy
     from sqlalchemy import create_engine
     
     try:
