@@ -10,6 +10,8 @@
 
 The SSIS Migration Tool is a CLI-based utility designed to parse SQL Server Integration Services (SSIS) packages (.dtsx files) and convert them into Python ETL scripts. The project follows a phased MVP approach with comprehensive validation, testing, rollback, and error reporting capabilities.
 
+[Project Status Presentation](https://presenti.ai/app/editor/sKcdFsPR8qG3uQE04X-9Kg?invite_code=HLmDXwXt)
+
 ---
 
 ## Development Timeline
